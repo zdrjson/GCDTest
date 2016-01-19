@@ -15,10 +15,16 @@
 @end
 
 @implementation ViewController
-
+/**
+ *   NSArray <NSNumber *> *numbers = @[@1, @2, @3];
+     NSArray <NSNumber *> *reverseNumbers = numbers.reverseObjectEnumerator.allObjects;
+     NSLog(@"%@",reverseNumbers);
+ */
 - (void)viewDidLoad {
     [super viewDidLoad];
-    [self dispatchSemaphoreDemo];
+    [self deadLockCase3];
+ 
+    
 }
 #pragma mark - GCD Demo
 //dispatch_set_target_queue
@@ -246,5 +252,79 @@
     });
     dispatch_resume(source);
     //还要注意需要用DISPATCH_VNODE_DELETE 去检查监视的文件或文件夹是否被删除，如果删除了就停止监听
+}
+//dispatch source timer demo
+- (void)dispatchSourceTimerDemo {
+    /**
+    NSTimer在主线程的runloop里会在runloop切换其它模式时停止，这时就需要手动在子线程开启一个模式为NSRunLoopCommonModes的runloop，如果不想开启一个新的runloop可以用不跟runloop关联的dispatch source timer，如下。
+     */
+    dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, DISPATCH_TARGET_QUEUE_DEFAULT);
+    dispatch_source_set_event_handler(source, ^{
+        NSLog(@"Time flies.");
+    });
+    dispatch_source_set_timer(source, DISPATCH_TIME_NOW, 5ull * NSEC_PER_SEC, 100ull * NSEC_PER_MSEC);
+    dispatch_resume(source);
+}
+//Dead Lock case 1
+- (void)deadLockCase1 {
+    NSLog(@"1");
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        NSLog(@"2");
+    });
+    NSLog(@"3");
+}
+//Dead Lock case 2
+- (void)deadLockCase2 {
+    NSLog(@"1");
+    //3会等2，因为2在全局并行队列里,不需要等待3，这样2执行完回到主队列，3就开始执行
+    dispatch_sync(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSLog(@"2");
+    });
+    NSLog(@"3");
+}
+//Dead Lock case 3
+- (void)deadLockCase3 {
+    dispatch_queue_t serialQueue = dispatch_queue_create("com.starming.gcddemo.serialqueue", DISPATCH_QUEUE_SERIAL);
+    NSLog(@"1");
+    dispatch_async(serialQueue, ^{
+        NSLog(@"2");
+        //串行队列里面同步一个串行队列就会死锁
+        //当前串行队列里面同步执行一个当前串行队列就会死锁
+        dispatch_sync(serialQueue, ^{
+            NSLog(@"3");
+        });
+        NSLog(@"4");
+    });
+    NSLog(@"5");
+}
+//Dead Lock case 4
+- (void)deadLockCase4 {
+    NSLog(@"1");
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSLog(@"2");
+        //将同步的串行队列放到另外一个线程就能够解决
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            NSLog(@"3");
+        });
+        NSLog(@"4");
+    });
+    NSLog(@"5");
+}
+//Dead Lock case 5
+- (void)deadLockCase5
+{
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSLog(@"1");
+        //回到主线程发现死循环后面就没法执行了
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            NSLog(@"2");
+        });
+        NSLog(@"3");
+    });
+    NSLog(@"4");
+    //死循环
+    while (1) {
+        
+    }
 }
 @end
